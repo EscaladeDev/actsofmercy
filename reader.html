@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Aurora Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+
+<style>
+:root{--bg:#0b1020;--panel:#0f1428;--panel2:#0c1224;--text:#f7f8fb;--muted:#9aa3c2;--accent:#22c55e;--border:rgba(148,163,184,.35)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#1b2a52,transparent),#0b1020;color:var(--text);
+     font-family:system-ui,-apple-system,sans-serif}
+.wrap{max-width:900px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 12px;position:sticky;top:0;background:rgba(11,16,32,0.9);backdrop-filter:blur(8px);z-index:10;border-bottom:1px solid var(--border)}
+.back{border:1px solid var(--border);background:linear-gradient(var(--panel),var(--panel2));color:#d8ddee;border-radius:10px;padding:8px 10px;cursor:pointer}
+.title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;font-size:14px}
+.page{flex:1;padding:20px 16px 80px;line-height:1.7;font-size:18px;max-width:700px;margin:0 auto;width:100%}
+.block{margin-bottom:1em;color:#cbd5e1;padding:4px;border-radius:4px;transition:background 0.2s}
+.block.active{background:rgba(34,197,94,0.15);color:#fff;box-shadow:0 0 0 2px rgba(34,197,94,0.3)}
+
+/* Footer Nav */
+.nav-bar{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--border);padding:12px;display:flex;justify-content:center;gap:20px;z-index:20}
+.nav-btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:10px 24px;border-radius:8px;cursor:pointer;font-weight:600;min-width:100px}
+.nav-btn:hover{background:var(--panel);border-color:var(--accent)}
+
+/* Buttons & Overlays */
+.fab{position:fixed;bottom:80px;right:20px;width:50px;height:50px;border-radius:25px;background:var(--accent);border:none;color:#000;font-size:20px;box-shadow:0 4px 12px rgba(0,0,0,0.3);cursor:pointer;z-index:30;display:grid;place-items:center}
+#menuBtn{bottom:140px;background:var(--panel);color:var(--text);border:1px solid var(--border)}
+
+.overlay{position:fixed;inset:0;z-index:50;display:none}
+.overlay.open{display:block}
+.backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(2px)}
+.sheet{position:absolute;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--accent);border-radius:20px 20px 0 0;padding:20px;max-height:80vh;overflow-y:auto;animation:slideUp 0.3s cubic-bezier(0.16,1,0.3,1)}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+
+/* Controls */
+.controls{display:flex;gap:10px;margin-bottom:15px;justify-content:center}
+.controls button{flex:1;padding:12px;border:none;border-radius:8px;font-weight:700;cursor:pointer}
+#playBtn{background:var(--accent);color:#000}
+#pauseBtn,#stopBtn{background:var(--panel2);border:1px solid var(--border);color:var(--text)}
+.rate{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.rate input{flex:1}
+select { width: 100%; background: var(--panel2); color: white; border: 1px solid var(--border); padding: 10px; border-radius: 8px; font-size: 14px; outline: none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <button class="back" id="backBtn">← Library</button>
+    <div class="title">
+      <div id="bookTitle" style="font-size:12px;opacity:0.7">Loading...</div>
+      <div id="unitTitle">...</div>
+    </div>
+  </div>
+  <div class="page" id="page"></div>
+</div>
+
+<div class="nav-bar">
+  <button class="nav-btn" id="prevBtn">Previous</button>
+  <button class="nav-btn" id="nextBtn">Next</button>
+</div>
+
+<button class="fab" id="menuBtn" title="Outline">☰</button>
+<button class="fab" id="ttsBtn" title="Read Aloud">🔊</button>
+
+<div class="overlay" id="navOverlay">
+  <div class="backdrop" id="navBackdrop"></div>
+  <div class="sheet">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <h3 style="margin:0">Chapters</h3>
+      <button class="back" id="closeNav">✕</button>
+    </div>
+    <div class="list" id="navList"></div>
+  </div>
+</div>
+
+<div class="overlay" id="ttsOverlay">
+  <div class="backdrop" id="ttsBackdrop"></div>
+  <div class="sheet">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:15px">
+      <h3 style="margin:0">Neural Reader (Gapless)</h3>
+      <button class="back" id="closeTts">✕</button>
+    </div>
+
+    <div style="margin-bottom:15px">
+      <label style="font-size:12px; color:var(--muted); margin-bottom:4px; display:block">Voice Model</label>
+      <select id="piperVoice">
+        <option value="en_US-hfc_female-medium">US Female (HFC)</option>
+        <option value="en_US-hfc_male-medium">US Male (HFC)</option>
+        <option value="en_GB-cori-medium">UK Female (Cori)</option>
+        <option value="en_GB-alan-medium">UK Male (Alan)</option>
+      </select>
+    </div>
+
+    <div class="controls">
+      <button id="playBtn">Play</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="stopBtn">Stop</button>
+    </div>
+
+    <div class="rate">
+      <label>Speed</label>
+      <input type="range" id="rateSlider" min="0.5" max="2" step="0.1" value="1">
+      <span id="rateLabel">1.0x</span>
+    </div>
+
+    <div style="text-align:center; margin-top:10px; font-size:12px; color:var(--accent)" id="ttsStatus">Ready</div>
+    
+    <div id="piperLoading" style="display:none; text-align:center; font-size:11px; color:#eab308; margin-top:8px; background:rgba(234, 179, 8, 0.1); padding:8px; border-radius:6px;">
+      ⚡ Initializing Engine...
+    </div>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// 1. READER CORE (EPUB/PDF Parsing)
+// ==========================================
+const coreState = { epub:null, pdf:null };
+
+function segmentBlocks(blocks){
+  const out=[]; let order=0;
+  // Use simple punctuation split to keep it fast
+  const splitIntoSentences = (text) => text.match(/[^.!?]+[.!?]+[\])'"]*|.+/g) || [text];
+  blocks.forEach(b=>{
+    splitIntoSentences(b.text).forEach(s=> out.push({ id:'seg-'+b.id+'-'+(order++), text:s }));
+  });
+  return out;
+}
+
+// EPUB PARSER
+async function loadEpubFromArrayBuffer(buffer){
+  if(typeof JSZip==='undefined') throw new Error('JSZip missing');
+  const zip = await JSZip.loadAsync(buffer);
+  const container = zip.file('META-INF/container.xml');
+  if(!container) throw new Error('Invalid EPUB: No container.xml');
+  
+  const containerXml = await container.async('string');
+  const parser = new DOMParser();
+  const cdom = parser.parseFromString(containerXml,'application/xml');
+  const rootfile = cdom.querySelector('rootfile');
+  if(!rootfile) throw new Error('Invalid EPUB: No rootfile');
+  
+  const rootPath = rootfile.getAttribute('full-path');
+  const opfFile = zip.file(rootPath);
+  if(!opfFile) throw new Error('Invalid EPUB: No OPF');
+  
+  const opfXml = await opfFile.async('string');
+  const opf = parser.parseFromString(opfXml,'application/xml');
+  
+  const manifest = new Map();
+  const items = opf.getElementsByTagName('item');
+  for(let i=0; i<items.length; i++){
+    manifest.set(items[i].getAttribute('id'), items[i].getAttribute('href'));
+  }
+  
+  const spine = [];
+  const itemrefs = opf.getElementsByTagName('itemref');
+  for(let i=0; i<itemrefs.length; i++){
+    spine.push(itemrefs[i].getAttribute('idref'));
+  }
+  
+  const folder = rootPath.substring(0, rootPath.lastIndexOf('/')+1);
+  coreState.epub = { zip, manifest, spine, folder };
+}
+
+function getEpubOutline(){
+  if(!coreState.epub) return [];
+  return coreState.epub.spine.map((id,i)=>({ id:id, title:'Chapter '+(i+1) }));
+}
+
+async function getEpubUnit(id){
+  const {zip,manifest,folder} = coreState.epub;
+  const href = manifest.get(id);
+  if(!href) throw new Error('Chapter not found: '+id);
+  
+  const file = zip.file(folder + href);
+  if(!file) throw new Error('File missing inside EPUB: '+href);
+  
+  const html = await file.async('string');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  
+  const blocks = [];
+  let idx=0;
+  doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, li, blockquote').forEach(el=>{
+    const t = el.innerText.replace(/\s+/g,' ').trim();
+    if(t.length>0) blocks.push({ id:id+'-b'+(idx++), text:t });
+  });
+  
+  return { id, title: 'Chapter', blocks, hasTextLayer:true };
+}
+
+// PDF PARSER
+async function loadPdfFromArrayBuffer(buffer){
+  if(typeof pdfjsLib==='undefined') throw new Error('PDF.js missing');
+  const loadingTask = pdfjsLib.getDocument({data: buffer});
+  coreState.pdf = { doc: await loadingTask.promise };
+}
+
+function getPdfOutline(){
+  if(!coreState.pdf) return [];
+  const num = coreState.pdf.doc.numPages;
+  const arr=[];
+  for(let i=1; i<=num; i++) arr.push({id:'page-'+i, title:'Page '+i});
+  return arr;
+}
+
+async function getPdfUnit(id){
+  const pdf = coreState.pdf;
+  let p = parseInt(id.split('-')[1]);
+  const page = await pdf.doc.getPage(p);
+  const tc = await page.getTextContent();
+  
+  let blocks = [];
+  let line = '';
+  let y = null;
+  let idx = 0;
+  
+  tc.items.forEach(it => {
+    const s = it.str.trim();
+    if(!s) return;
+    const ty = it.transform[5];
+    if(y===null) y=ty;
+    if(Math.abs(ty-y)>10){ 
+      if(line) blocks.push({ id:'p'+p+'-b'+(idx++), text:line });
+      line=''; y=ty;
+    }
+    line += s + ' ';
+  });
+  if(line) blocks.push({ id:'p'+p+'-b'+(idx++), text:line });
+  
+  return { id, title:'Page '+p, blocks, hasTextLayer: blocks.length>0 };
+}
+
+
+// ==========================================
+// 2. GAPLESS PIPER TTS ENGINE
+// ==========================================
+const PiperState = {
+  lib: null,
+  segments: [],
+  playbackIndex: 0,
+  generationIndex: 0,
+  audioCache: {}, // Stores Promises for Blobs
+  isPlaying: false,
+  isPaused: false,
+  currentAudio: null,
+  voiceId: 'en_US-hfc_female-medium',
+  rate: 1.0,
+  bufferSize: 3, // Lookahead count
+  onStart: null,
+  onDone: null
+};
+
+async function initPiper(){
+  if(PiperState.lib) return;
+  try {
+    PiperState.lib = await import('https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/+esm');
+    // Pre-wake engine
+    await PiperState.lib.stored(); 
+  } catch(e){ console.error("Piper failed to load:", e); }
+}
+
+// 1. GENERATE (Returns Promise of Blob URL)
+function generateSegmentPromise(idx) {
+  const seg = PiperState.segments[idx];
+  if(!seg) return null;
+  
+  return PiperState.lib.predict({ 
+    text: seg.text.trim(), 
+    voiceId: PiperState.voiceId 
+  }).then(blob => URL.createObjectURL(blob));
+}
+
+// 2. FILL BUFFER
+function fillBuffer() {
+  const { segments, playbackIndex, bufferSize, audioCache } = PiperState;
+  
+  // Keep generating until we are ahead by BUFFER_SIZE
+  while (PiperState.generationIndex < segments.length && 
+         PiperState.generationIndex < playbackIndex + bufferSize) {
+         
+    const gIdx = PiperState.generationIndex;
+    if (!audioCache[gIdx]) {
+      // console.log("Buffering segment", gIdx);
+      audioCache[gIdx] = generateSegmentPromise(gIdx);
+    }
+    PiperState.generationIndex++;
+  }
+}
+
+// 3. MAIN PLAY LOOP
+async function playPiper(){
+  if(!PiperState.lib) await initPiper();
+  if(!PiperState.segments.length) return;
+  
+  // Resume if paused
+  if(PiperState.isPaused && PiperState.currentAudio){
+    PiperState.currentAudio.play();
+    PiperState.isPaused = false;
+    PiperState.isPlaying = true;
+    return;
+  }
+  
+  if(PiperState.isPlaying) return;
+  PiperState.isPlaying = true;
+  PiperState.isPaused = false;
+  
+  playNextSegment();
+}
+
+async function playNextSegment(){
+  if(!PiperState.isPlaying || PiperState.isPaused) return;
+
+  // End of chapter
+  if(PiperState.playbackIndex >= PiperState.segments.length){
+    stopPiper(); 
+    if(PiperState.onDone) PiperState.onDone(); 
+    return;
+  }
+
+  // 1. Notify UI (Highlight)
+  const seg = PiperState.segments[PiperState.playbackIndex];
+  if(PiperState.onStart) PiperState.onStart(seg.id);
+
+  // 2. Trigger background generation for future sentences
+  fillBuffer();
+
+  try {
+    // 3. Wait for current audio (it might already be ready!)
+    const audioUrl = await PiperState.audioCache[PiperState.playbackIndex];
+    
+    // Check if stopped while waiting
+    if(!PiperState.isPlaying) return; 
+
+    // 4. Play
+    PiperState.currentAudio = new Audio(audioUrl);
+    PiperState.currentAudio.playbackRate = PiperState.rate;
+    
+    PiperState.currentAudio.onended = () => {
+      // Cleanup memory
+      URL.revokeObjectURL(audioUrl);
+      delete PiperState.audioCache[PiperState.playbackIndex];
+      
+      PiperState.playbackIndex++;
+      playNextSegment(); // Recursion
+    };
+
+    PiperState.currentAudio.onerror = (e) => {
+      console.warn("Audio error, skipping", e);
+      PiperState.playbackIndex++;
+      playNextSegment();
+    };
+
+    await PiperState.currentAudio.play();
+
+  } catch(e) {
+    console.error("Pipeline Error:", e);
+    PiperState.playbackIndex++;
+    playNextSegment(); // Skip bad segments
+  }
+}
+
+function pausePiper(){ 
+  if(PiperState.currentAudio) { 
+    PiperState.currentAudio.pause(); 
+    PiperState.isPaused=true; 
+    PiperState.isPlaying=false; 
+  } 
+}
+
+function stopPiper(){ 
+  if(PiperState.currentAudio) { 
+    PiperState.currentAudio.pause(); 
+    PiperState.currentAudio=null; 
+  } 
+  PiperState.isPlaying=false; 
+  PiperState.isPaused=false; 
+  PiperState.playbackIndex=0;
+  PiperState.generationIndex=0;
+  PiperState.audioCache={}; // Clear buffer
+  
+  if(PiperState.onStart) PiperState.onStart(null); 
+}
+
+
+// ==========================================
+// 3. UI LOGIC & NAVIGATION
+// ==========================================
+const params = new URLSearchParams(location.search);
+const file = params.get('file');
+const name = params.get('name') || file || 'Untitled';
+const typeHint = params.get('type');
+const bookKey = params.get('key') || file || name;
+
+const pageEl = document.getElementById('page');
+document.getElementById('bookTitle').textContent = name;
+const ttsStatus = document.getElementById('ttsStatus');
+const BOOKMARK_KEY = 'aurora_v2';
+let mode = null;
+let currentUnitId = null;
+
+function showManualUpload(msg){
+  pageEl.innerHTML = `
+    <div style="text-align:center; padding: 40px; color: #cbd5e1;">
+      <div style="font-size: 40px; margin-bottom: 20px;">🔒</div>
+      <h3 style="margin:0 0 10px 0;">Security Restriction</h3>
+      <p style="font-size: 14px; color: #9aa3c2; margin-bottom: 20px;">Browser blocked auto-loading <b>"${file}"</b>.</p>
+      <div style="background: #1e293b; padding: 20px; border-radius: 12px; display: inline-block; border: 1px dashed #475569;">
+        <label for="manualInput" style="display: block; margin-bottom: 10px; font-weight: bold; cursor: pointer; color: #22c55e;">Click to select file manually</label>
+        <input type="file" id="manualInput" accept=".epub,.pdf" style="display:none">
+      </div>
+    </div>`;
+  document.getElementById('manualInput').addEventListener('change', e => {
+    const f = e.target.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = evt => processBook(evt.target.result);
+    reader.readAsArrayBuffer(f);
+  });
+}
+
+async function boot(){
+  if(!file){ pageEl.innerHTML='<div style="padding:20px;color:#9aa3c2">No file specified.</div>'; return; }
+  try {
+    const res = await fetch('./books/'+file);
+    if(!res.ok) throw new Error('Fetch failed');
+    processBook(await res.arrayBuffer());
+  } catch(e) { showManualUpload(e.message); }
+}
+
+async function processBook(buffer){
+  pageEl.innerHTML='<div style="text-align:center;padding:50px;color:#9aa3c2">Opening book...</div>';
+  try {
+    let type = typeHint || (file.toLowerCase().endsWith('.pdf')?'pdf':'epub');
+    if(file.toLowerCase().endsWith('.epub')) type='epub';
+    
+    if(type==='epub'){
+      await loadEpubFromArrayBuffer(buffer);
+      mode='epub';
+      const outline = getEpubOutline();
+      renderOutline(outline);
+      const mark = getBookmark();
+      await displayUnit(mark && outline.some(x=>x.id===mark.unitId) ? mark.unitId : outline[0].id);
+    } else {
+      await loadPdfFromArrayBuffer(buffer);
+      mode='pdf';
+      const outline = getPdfOutline();
+      renderOutline(outline);
+      const mark = getBookmark();
+      await displayUnit(mark ? mark.unitId : 'page-1');
+    }
+  } catch(e){
+    pageEl.innerHTML=`<div style="color:#ef4444;padding:20px">Failed to parse book.<br>${e.message}</div>`;
+  }
+}
+
+function renderOutline(items){
+  const el = document.getElementById('navList');
+  el.innerHTML='';
+  if(!items.length) { el.innerHTML='<div style="padding:10px;color:#9aa3c2">No chapters</div>'; return; }
+  items.forEach(it => {
+    const div = document.createElement('div');
+    div.style.padding='8px 0';
+    div.innerHTML = `<a style="color:#e2e8f0;text-decoration:none;cursor:pointer">${it.title}</a>`;
+    div.onclick = () => { displayUnit(it.id); document.getElementById('navOverlay').classList.remove('open'); };
+    el.appendChild(div);
+  });
+}
+
+async function displayUnit(id){
+  currentUnitId = id;
+  saveBookmark(id);
+  const unitTitle = document.getElementById('unitTitle');
+  let unit;
+  if(mode==='epub') unit = await getEpubUnit(id); else unit = await getPdfUnit(id);
+  unitTitle.textContent = unit.title;
+  pageEl.innerHTML = '';
+  
+  window.scrollTo(0, 0);
+
+  if(unit.blocks.length === 0){
+    pageEl.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b">Empty Page</div>';
+    return;
+  }
+  const segments = segmentBlocks(unit.blocks);
+  segments.forEach(seg => {
+    const d = document.createElement('div');
+    d.className = 'block'; d.textContent = seg.text; d.setAttribute('data-id', seg.id);
+    pageEl.appendChild(d);
+  });
+  if(document.getElementById('ttsOverlay').classList.contains('open')){ stopPiper(); prepareTts(); }
+}
+
+function changeChapter(offset) {
+  if (mode === 'pdf') {
+    const p = parseInt(currentUnitId.split('-')[1]);
+    const nextP = p + offset;
+    if(nextP >= 1 && nextP <= coreState.pdf.doc.numPages) displayUnit('page-'+nextP);
+  } else if (mode === 'epub') {
+    const idx = coreState.epub.spine.indexOf(currentUnitId);
+    if(idx === -1) return;
+    const nextIdx = idx + offset;
+    if(nextIdx >= 0 && nextIdx < coreState.epub.spine.length) {
+      displayUnit(coreState.epub.spine[nextIdx]);
+    }
+  }
+}
+
+// Controls
+document.getElementById('prevBtn').onclick = () => changeChapter(-1);
+document.getElementById('nextBtn').onclick = () => changeChapter(1);
+
+document.getElementById('menuBtn').onclick = () => document.getElementById('navOverlay').classList.add('open');
+document.getElementById('closeNav').onclick = () => document.getElementById('navOverlay').classList.remove('open');
+document.getElementById('ttsBtn').onclick = () => { document.getElementById('ttsOverlay').classList.add('open'); prepareTts(); };
+document.getElementById('closeTts').onclick = () => document.getElementById('ttsOverlay').classList.remove('open');
+document.getElementById('backBtn').onclick = () => location.href='./index.html';
+
+document.getElementById('playBtn').onclick = () => { 
+  document.getElementById('piperLoading').style.display='block'; 
+  ttsStatus.textContent = "Processing..."; 
+  playPiper(); 
+};
+document.getElementById('pauseBtn').onclick = () => { pausePiper(); ttsStatus.textContent="Paused"; };
+document.getElementById('stopBtn').onclick = () => { stopPiper(); ttsStatus.textContent="Stopped"; document.getElementById('piperLoading').style.display='none'; };
+document.getElementById('piperVoice').onchange = (e) => { PiperState.voiceId = e.target.value; };
+document.getElementById('rateSlider').oninput = (e) => { 
+  const v = parseFloat(e.target.value); document.getElementById('rateLabel').textContent = v+'x'; PiperState.rate = v; 
+  if(PiperState.currentAudio) PiperState.currentAudio.playbackRate = v;
+};
+
+// --- DATA ---
+function getBookmark(){ try{return JSON.parse(localStorage.getItem(BOOKMARK_KEY)||'{}')[bookKey]}catch(e){} }
+function saveBookmark(uid){ 
+  const store = JSON.parse(localStorage.getItem(BOOKMARK_KEY)||'{}');
+  store[bookKey] = { unitId: uid, mode };
+  localStorage.setItem(BOOKMARK_KEY, JSON.stringify(store));
+}
+
+function prepareTts(){
+  const blocks = Array.from(document.querySelectorAll('.block'));
+  const segs = blocks.map(el => ({ id: el.getAttribute('data-id'), text: el.innerText })).filter(s => s.text.trim().length > 0);
+  
+  PiperState.segments = segs; 
+  PiperState.playbackIndex = 0; 
+  PiperState.generationIndex = 0;
+  PiperState.audioCache = {};
+
+  if(segs.length > 0) ttsStatus.textContent = `Ready (${segs.length} segments)`; else ttsStatus.textContent = "No text found";
+  
+  PiperState.onStart = (id) => {
+    document.querySelectorAll('.active').forEach(e=>e.classList.remove('active'));
+    if(!id) return;
+    const el = document.querySelector(`[data-id="${id}"]`);
+    if(el){ el.classList.add('active'); el.scrollIntoView({behavior:'smooth', block:'center'}); }
+    ttsStatus.textContent = "Speaking..."; document.getElementById('piperLoading').style.display='none';
+  };
+  PiperState.onDone = () => { ttsStatus.textContent = "Finished"; document.querySelectorAll('.active').forEach(e=>e.classList.remove('active')); };
+}
+
+boot();
+</script>
+</body>
+</html>
