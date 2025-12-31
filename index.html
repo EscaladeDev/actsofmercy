@@ -3,204 +3,374 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Acts of Mercy Library</title>
+<title>Acts of Mercy Atlas</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
 /* --- THEME & LAYOUT --- */
-:root{--bg:#0b1020;--panel:#0f1428;--panel2:#0c1224;--text:#f7f8fb;--muted:#9aa3c2;--accent:#22c55e;--border:rgba(148,163,184,.35)}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+:root {
+  --bg: #0b1020;
+  --panel: #0f1428;
+  --text: #f7f8fb;
+  --muted: #9aa3c2;
+  --accent: #22c55e;
+  --border: rgba(148,163,184,0.25);
+  --map-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  --tooltip-bg: rgba(15, 20, 40, 0.95);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f8fafc;
+    --panel: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --accent: #16a34a;
+    --border: #e2e8f0;
+    --map-shadow: 0 20px 50px rgba(148, 163, 184, 0.3);
+    --tooltip-bg: rgba(255, 255, 255, 0.95);
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; overflow-x: hidden; transition: background 0.5s ease; }
 
 /* HEADER */
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--border);z-index:20;flex-shrink:0;}
-.brand{display:flex;gap:10px;align-items:center}
-.logo{width:32px;height:32px;border-radius:8px;background:radial-gradient(circle at 35% 25%,#34d399,#059669 60%,#065f46 100%);display:grid;place-items:center;font-size:18px}
-h1{font-size:16px;margin:0}
-.pill{border:1px solid var(--border);padding:4px 10px;border-radius:999px;color:#d3d7e4;font-size:12px; transition: color 0.3s;}
-.muted{color:var(--muted)}
-
-/* MAP CONTAINER */
-#map-container { flex: 1; position: relative; width: 100%; background: #0b1020; z-index: 1; }
-#map-container::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 401;
-    background: radial-gradient(circle at center, transparent 50%, #0b1020 100%);
-    box-shadow: inset 0 0 40px #0b1020;
+header {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 30px; z-index: 20; pointer-events: none;
 }
-#map { width: 100%; height: 100%; background: #0b1020; outline: none; }
+.brand { display: flex; gap: 12px; align-items: center; pointer-events: auto; }
+.logo { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); display: grid; place-items: center; font-size: 22px; box-shadow: 0 4px 12px rgba(34,197,94,0.4); }
+h1 { font-size: 18px; margin: 0; font-weight: 800; letter-spacing: -0.025em; mix-blend-mode: overlay; }
+.pill { pointer-events: auto; border: 1px solid var(--border); padding: 6px 14px; border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 600; background: var(--panel); backdrop-filter: blur(10px); }
 
-/* MARKERS & POPUPS */
-.book-marker {
-    background: var(--accent); border: 2px solid #fff; border-radius: 50%;
-    box-shadow: 0 0 15px var(--accent), 0 0 30px var(--accent); transition: transform 0.2s ease;
+/* HERO SECTION */
+#hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  /* Default Gradient (Overridden by JS) */
+  background: radial-gradient(circle at 70% 30%, #1a2542, #0b1020 70%);
+  position: relative;
+  text-align: center;
+  transition: background 1s ease;
 }
-.book-marker:hover { transform: scale(1.3); cursor: pointer; }
 
-.leaflet-bar { border: none !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; }
-.leaflet-bar a { background: var(--panel2) !important; color: var(--text) !important; border-bottom: 1px solid var(--border) !important; }
-.leaflet-bar a:hover { background: var(--panel) !important; color: var(--accent) !important; }
-.leaflet-bar a:last-child { border-bottom: none !important; }
+.hero-content { max-width: 800px; z-index: 2; opacity: 0; transform: translateY(20px); animation: fadeUp 1s ease forwards 0.3s; }
 
-.leaflet-popup-content-wrapper, .leaflet-popup-tip {
-    background: rgba(12, 18, 36, 0.95) !important; backdrop-filter: blur(8px);
-    border: 1px solid var(--border); color: var(--text); border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+#heroCover {
+  width: 140px; height: 210px; margin-bottom: 30px; border-radius: 8px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5); display: none; object-fit: cover;
+  animation: fadeUp 1s ease forwards; margin-left: auto; margin-right: auto;
+  border: 4px solid rgba(255,255,255,0.1);
 }
-.leaflet-popup-content { margin: 12px; line-height: 1.5; }
-.leaflet-container a.leaflet-popup-close-button { color: var(--muted) !important; padding: 8px; }
 
-.pop-meta { display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
-.pop-title { font-weight: 700; font-size: 15px; }
-.pop-loc { color: var(--muted); font-size: 12px; display:flex; gap:4px; align-items:center; }
-.pop-btn { margin-top: 10px; width: 100%; border:none; background:linear-gradient(#39d88a,#19964e); color:white; padding:8px; border-radius:6px; cursor:pointer; font-weight:600; }
-.pop-btn:hover { opacity: 0.9; }
+.hero-label { 
+  color: var(--accent); font-weight: 800; text-transform: uppercase; 
+  letter-spacing: 0.15em; font-size: 12px; margin-bottom: 20px; display: inline-block;
+  background: rgba(255,255,255,0.05); padding: 6px 12px; border-radius: 6px;
+  backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1);
+}
+
+.hero-title { 
+  font-size: clamp(36px, 6vw, 72px); line-height: 1.05; margin: 0 0 24px 0; font-weight: 900; 
+  text-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.hero-desc { 
+  font-size: clamp(16px, 2vw, 20px); line-height: 1.6; color: var(--text); opacity: 0.8; 
+  margin-bottom: 40px; max-width: 600px; margin-left: auto; margin-right: auto; 
+}
+
+.btn-hero {
+  background: var(--accent); color: #fff; text-decoration: none; padding: 16px 36px; border-radius: 99px;
+  font-weight: 700; font-size: 16px; display: inline-flex; align-items: center; gap: 10px;
+  box-shadow: 0 10px 20px -5px rgba(0,0,0,0.3); transition: all 0.2s;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+.btn-hero:hover { transform: scale(1.05); box-shadow: 0 15px 30px -5px rgba(0,0,0,0.4); }
+
+/* MAP */
+#map-wrapper {
+  height: 85vh; width: 95%; max-width: 1400px;
+  margin: 0 auto 50px auto; border-radius: 24px; overflow: hidden;
+  position: relative; border: 1px solid var(--border);
+  box-shadow: var(--map-shadow); opacity: 0;
+  transform: translateY(100px) scale(0.95);
+  transition: all 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+#map-wrapper.revealed { opacity: 1; transform: translateY(0) scale(1); }
+#map { width: 100%; height: 100%; background: var(--panel); }
+
+/* POPUPS */
+.leaflet-tooltip.hover-card {
+  background: var(--tooltip-bg); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+  padding: 0; color: var(--text); opacity: 1 !important;
+  backdrop-filter: blur(8px);
+}
+.leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before, .leaflet-tooltip-left:before, .leaflet-tooltip-right:before { border: none !important; }
+
+.book-card { display: flex; gap: 16px; padding: 16px; max-width: 320px; align-items: flex-start; }
+.card-cover {
+  width: 70px; height: 100px; flex-shrink: 0; background: var(--panel); border-radius: 6px;
+  box-shadow: 2px 4px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;
+  font-size: 24px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);
+}
+.card-cover img { width: 100%; height: 100%; object-fit: cover; }
+.card-info { flex: 1; min-width: 0; }
+.card-title { font-weight: 800; font-size: 15px; margin-bottom: 4px; line-height: 1.3; }
+.card-loc { font-size: 11px; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 8px; letter-spacing: 0.05em; }
+.card-desc { font-size: 12px; color: var(--muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* MARKER */
+.book-marker { background: none; border: none; }
+.marker-dot {
+  width: 14px; height: 14px; background: var(--accent); border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(34,197,94,0.3); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.book-marker:hover .marker-dot { transform: scale(1.6); background: #fff; border-color: var(--accent); box-shadow: 0 0 0 6px rgba(34,197,94,0.5); }
+
+@keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+@keyframes bounce { 0%, 20%, 50%, 80%, 100% {transform: translateX(-50%) translateY(0);} 40% {transform: translateX(-50%) translateY(-10px);} 60% {transform: translateX(-50%) translateY(-5px);} }
 </style>
 </head>
 <body>
 
   <header>
     <div class="brand">
-      <div class="logo" aria-hidden="true">🌍</div>
-      <div>
-        <h1>Acts of Mercy Atlas</h1>
-        <div class="muted" style="font-size:12px">Spatial Library Browser</div>
-      </div>
+      <div class="logo">🌍</div>
+      <div><h1>Acts of Mercy</h1></div>
     </div>
     <span class="pill" id="libCount">Loading...</span>
   </header>
 
-  <div id="map-container">
+  <section id="hero">
+    <div class="hero-content">
+      <img id="heroCover" src="" alt="Cover">
+      <span class="hero-label" id="heroLabel">Featured</span>
+      <h2 class="hero-title" id="heroTitle">Loading Library...</h2>
+      <p class="hero-desc" id="heroDesc">...</p>
+      <a id="heroLink" href="#" class="btn-hero"><span id="heroBtnText">Start Reading</span> <span>→</span></a>
+    </div>
+
+    <div class="scroll-hint" onclick="document.getElementById('map-wrapper').scrollIntoView({behavior:'smooth'})">
+      <div class="arrow"></div>
+    </div>
+  </section>
+
+  <div id="map-wrapper">
     <div id="map"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   <script>
-  // --- 1. YOUR LIBRARY DATA ---
+  // ==========================================
+  // 1. FEATURED CONFIGURATION
+  // ==========================================
+  const HERO_CONFIG = {
+    // This MUST match a 'file' in LIBRARY_DATA below
+    linkedFile: "Little Gonxhe 12-31-2025.epub", 
+    
+    // Visual Customization (Optional)
+    label: "Editor's Choice",
+    bgGradient: "radial-gradient(circle at 50% 30%, #1e3a8a, #0b1020 80%)",
+    accentColor: "#60a5fa",
+    
+    // Text Overrides (Set to null or remove to use the Book's own name/desc)
+    customTitle: null, // Example: "The Mystery of the Deep"
+    customDesc: null,  // Example: "A specialized description for the landing page."
+    btnText: "Read Now"
+  };
+
+  // ==========================================
+  // 2. LIBRARY DATA
+  // ==========================================
   const LIBRARY_DATA = [
-    {
-      file: "Test3.epub",
-      name: "Test3",
+    { 
+      file: "Little Gonxhe 12-31-2025.epub", 
+      name: "Little Gonxhe", 
       lat: -37.8136, 
-      lng: 144.9631,
-      locationName: "Pacific Ocean (near Australia)"
+      lng: 144.9631, 
+      locationName: "Pacific Ocean", 
+      desc: "TBD.",
+      fallbackColor: "#1e3a8a"
     },
-    {
-      file: "Test2.pdf",
-      name: "Text2",
+    { 
+      file: "Test2.pdf", 
+      name: "London Chronicles", 
       lat: 51.5237, 
-      lng: -0.1585,
-      locationName: "London, UK"
+      lng: -0.1585, 
+      locationName: "London, UK", 
+      desc: "Explore the foggy streets of Victorian London in this historical account.",
+      fallbackColor: "#475569" 
     },
-    {
-      file: "Test.epub",
-      name: "Test",
+    { 
+      file: "Test.epub", 
+      name: "New York Nights", 
       lat: 40.7831, 
-      lng: -73.9712,
-      locationName: "New York, USA"
+      lng: -73.9712, 
+      locationName: "New York, USA", 
+      desc: "The city that never sleeps holds secrets that never die.",
+      fallbackColor: "#7c3aed"
     }
   ];
 
-  // --- 2. APP LOGIC ---
-  const countEl = document.getElementById('libCount');
-  const BOOKMARK_KEY = 'ActsOfMercyReaderBookmarks_v1';
+  // --- UTILS ---
+  async function extractCover(fileUrl) {
+    if (!fileUrl.endsWith('.epub')) return null;
+    try {
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error("File 404");
+      const blob = await response.blob();
+      const zip = await JSZip.loadAsync(blob);
+      const containerText = await zip.file("META-INF/container.xml").async("string");
+      const parser = new DOMParser();
+      const rootPath = parser.parseFromString(containerText, "text/xml").querySelector("rootfile").getAttribute("full-path");
+      const opfText = await zip.file(rootPath).async("string");
+      const opfDoc = parser.parseFromString(opfText, "text/xml");
+      
+      let coverId = null;
+      const metaCover = opfDoc.querySelector('meta[name="cover"]');
+      if (metaCover) coverId = metaCover.getAttribute("content");
+      else {
+        const itemCover = opfDoc.querySelector('item[properties="cover-image"]');
+        if (itemCover) coverId = itemCover.getAttribute("id");
+      }
+      if (!coverId) return null;
+
+      const coverItem = opfDoc.getElementById(coverId) || opfDoc.querySelector(`item[id="${coverId}"]`);
+      if(!coverItem) return null;
+      const href = coverItem.getAttribute("href");
+      const rootDir = rootPath.substring(0, rootPath.lastIndexOf('/'));
+      const fullPath = rootDir ? `${rootDir}/${href}` : href;
+      
+      const imgFile = zip.file(fullPath);
+      return imgFile ? URL.createObjectURL(await imgFile.async("blob")) : null;
+    } catch (e) { return null; }
+  }
+
+  // --- APP LOGIC ---
   let map = null;
+  let currentTileLayer = null;
 
-  // Global Error Handler to catch hidden crashes
-  window.onerror = function(msg, url, line) {
-     console.error(msg);
-     countEl.textContent = "Error (See Console)";
-     countEl.style.color = "#ff4444";
-     countEl.style.borderColor = "#ff4444";
-     return false;
-  };
-
-  function loadBookmarks(){ 
-    try{return JSON.parse(localStorage.getItem(BOOKMARK_KEY)||'{}')}catch(e){return{}} 
-  }
-
-  function labelFor(bm){
-    if(!bm) return null;
-    if(bm.mode==='epub'){
-      const parts=bm.unitId.split('-'); const n=parseInt(parts[parts.length-1],10);
-      return isNaN(n)?'Resume reading':'Resume Ch. '+(n+1);
-    }
-    return 'Resume reading';
-  }
-
-  function createPopupContent(book, resumeLabel){
-    const div = document.createElement('div');
-    div.className = 'pop-meta';
-    const typeBadge = (book.file||'').endsWith('.pdf') ? 'PDF' : 'EPUB';
+  async function initHero() {
+    if(LIBRARY_DATA.length === 0) return;
     
-    div.innerHTML = `
-      <div class="pop-title">${book.name}</div>
-      <div class="pop-loc">📍 ${book.locationName}</div>
-      <div style="font-size:11px; color:#9aa3c2; margin-top:2px">
-        ${typeBadge} • ${resumeLabel || 'Not started'}
-      </div>
-      <button class="pop-btn">Open Book</button>
-    `;
-    div.querySelector('button').onclick = () => {
-      const params = new URLSearchParams({file:book.file, name:book.name});
-      location.href = './reader.html?'+params.toString();
-    };
-    return div;
+    // 1. Find the tied book in our database
+    let book = LIBRARY_DATA.find(b => b.file === HERO_CONFIG.linkedFile);
+    
+    // Fallback if the linked file isn't found
+    if (!book) {
+       console.warn("Featured book not found in data. Picking random.");
+       book = LIBRARY_DATA[Math.floor(Math.random() * LIBRARY_DATA.length)];
+    }
+
+    // 2. Apply Visuals from Config
+    if(HERO_CONFIG.bgGradient) document.getElementById('hero').style.background = HERO_CONFIG.bgGradient;
+    if(HERO_CONFIG.accentColor) {
+       document.querySelector('.hero-label').style.color = HERO_CONFIG.accentColor;
+       document.querySelector('.logo').style.background = HERO_CONFIG.accentColor;
+       document.getElementById('heroLink').style.backgroundColor = HERO_CONFIG.accentColor;
+    }
+    document.getElementById('heroLabel').textContent = HERO_CONFIG.label || "Featured";
+    document.getElementById('heroBtnText').textContent = HERO_CONFIG.btnText || "Read Now";
+
+    // 3. Apply Text (Prefer Config -> Fallback to Book Data)
+    document.getElementById('heroTitle').textContent = HERO_CONFIG.customTitle || book.name;
+    document.getElementById('heroDesc').textContent = HERO_CONFIG.customDesc || book.desc;
+
+    // 4. Link Action (Always links to the BOOK's file)
+    const params = new URLSearchParams({file:book.file, name:book.name});
+    document.getElementById('heroLink').href = './reader.html?'+params.toString();
+
+    // 5. Cover Image
+    const heroImg = document.getElementById('heroCover');
+    const realCoverUrl = await extractCover(book.file);
+    if(realCoverUrl) {
+      heroImg.src = realCoverUrl;
+      heroImg.style.display = "block";
+    } else {
+      heroImg.style.display = "none";
+    }
   }
 
   function initMap(){
-    // Check if Leaflet loaded
-    if(typeof L === 'undefined'){
-      countEl.textContent = "Map Error: No Internet?";
-      countEl.style.color = "orange";
-      return;
-    }
+    if(typeof L === 'undefined'){ document.getElementById('libCount').textContent = "Offline"; return; }
 
-    // Initialize Map
-    map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    map = L.map('map', { zoomControl: false, attributionControl: false, scrollWheelZoom: false }).setView([20, 0], 2);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    updateMapTiles();
 
-    // Dark Tiles
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 18,
-      attribution: 'Map data &copy; OpenStreetMap'
-    }).addTo(map);
-
-    // Load Bookmarks
-    const marks = loadBookmarks();
+    const AOMIcon = L.divIcon({ className: 'book-marker', html: '<div class="marker-dot"></div>', iconSize: [16, 16], popupAnchor: [0, -10] });
     const markers = [];
 
-    // Icon Style
-    const AOMIcon = L.divIcon({
-      className: 'book-marker',
-      iconSize: [12, 12],
-      iconAnchor: [6, 6],
-      popupAnchor: [0, -10]
+    LIBRARY_DATA.forEach(async (book) => {
+      const m = L.marker([book.lat, book.lng], { icon: AOMIcon }).addTo(map);
+      
+      let coverHtml = `<div class="card-cover" style="background: ${book.fallbackColor || '#333'}"><span style="font-size:20px; color:rgba(255,255,255,0.8)">📖</span></div>`;
+      
+      const content = `
+        <div class="book-card">
+          ${coverHtml}
+          <div class="card-info">
+            <div class="card-loc">📍 ${book.locationName}</div>
+            <div class="card-title">${book.name}</div>
+            <div class="card-desc">${book.desc}</div>
+            <div class="card-hint">Click to read</div>
+          </div>
+        </div>`;
+
+      m.bindTooltip(content, { permanent: false, direction: 'top', className: 'hover-card', offset: [0, -12], opacity: 1 });
+      m.on('click', () => { window.location.href = `./reader.html?file=${book.file}&name=${book.name}`; });
+      markers.push(m);
+
+      const realCoverUrl = await extractCover(book.file);
+      if(realCoverUrl) {
+        m.setTooltipContent(content.replace(coverHtml, `<div class="card-cover"><img src="${realCoverUrl}" alt="${book.name}" /></div>`));
+      }
     });
 
-    // Place Markers from LIBRARY_DATA
-    LIBRARY_DATA.forEach(book => {
-      // Safety check for missing coords
-      if(book.lat === undefined || book.lng === undefined) return;
-
-      const resumeLabel = labelFor(marks[book.file] || marks[book.name]);
-      const marker = L.marker([book.lat, book.lng], { icon: AOMIcon }).addTo(map);
-      marker.bindPopup(createPopupContent(book, resumeLabel));
-      markers.push(marker);
-    });
-
-    // Update Status
-    if(markers.length > 0){
-      countEl.textContent = markers.length + " locations mapped";
+    if(markers.length) {
       const group = new L.featureGroup(markers);
       map.fitBounds(group.getBounds().pad(0.2));
-    } else {
-      countEl.textContent = "0 locations found";
+      document.getElementById('libCount').textContent = markers.length + " Books";
     }
   }
 
-  // Run when page is ready
-  window.addEventListener('DOMContentLoaded', initMap);
+  function updateMapTiles() {
+    if(!map) return;
+    const isLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    const url = isLight ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+    if(currentTileLayer) map.removeLayer(currentTileLayer);
+    currentTileLayer = L.tileLayer(url, { maxZoom: 18 }).addTo(map);
+  }
+
+  function initObserver() {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if(entry.isIntersecting) {
+          entry.target.classList.add('revealed');
+          if(map) setTimeout(() => map.invalidateSize(), 1000); 
+        }
+      });
+    }, { threshold: 0.2 });
+    observer.observe(document.getElementById('map-wrapper'));
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    initHero();
+    initMap();
+    initObserver();
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', updateMapTiles);
+  });
   </script>
 </body>
 </html>
