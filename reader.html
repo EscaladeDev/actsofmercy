@@ -9,6 +9,7 @@
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 
 <style>
+/* --- THEME & LAYOUT --- */
 :root{--bg:#0b1020;--panel:#0f1428;--panel2:#0c1224;--text:#f7f8fb;--muted:#9aa3c2;--accent:#22c55e;--border:rgba(148,163,184,.35)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#1b2a52,transparent),#0b1020;color:var(--text);
@@ -186,9 +187,19 @@ async function getEpubUnit(id){
   
   const blocks = [];
   let idx=0;
-  doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, li, blockquote').forEach(el=>{
+
+  // --- UPDATED SELECTOR FOR ROBUST TEXT EXTRACTION ---
+  // Now includes div, pre, and span to catch non-standard layouts
+  const targets = doc.body.querySelectorAll('p, div, h1, h2, h3, h4, h5, li, blockquote, pre');
+  
+  targets.forEach(el => {
+    // Skip wrapper elements that contain other block elements to prevent duplicate text
+    if(['DIV','LI','BLOCKQUOTE'].includes(el.tagName)){
+       if(el.querySelector('p, div, h1, h2, h3, h4, h5, li')) return;
+    }
+
     const t = el.innerText.replace(/\s+/g,' ').trim();
-    if(t.length>0) blocks.push({ id:id+'-b'+(idx++), text:t });
+    if(t.length > 0) blocks.push({ id:id+'-b'+(idx++), text:t });
   });
   
   return { id, title: 'Chapter', blocks, hasTextLayer:true };
