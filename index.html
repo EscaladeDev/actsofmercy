@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Aurora Library</title>
+<title>Acts of Mercy Library</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 
 <style>
@@ -62,7 +62,7 @@ h1{font-size:16px;margin:0}
     <div class="brand">
       <div class="logo" aria-hidden="true">🌍</div>
       <div>
-        <h1>Aurora Atlas</h1>
+        <h1>Acts of Mercy Atlas</h1>
         <div class="muted" style="font-size:12px">Spatial Library Browser</div>
       </div>
     </div>
@@ -103,7 +103,7 @@ h1{font-size:16px;margin:0}
 
   // --- 2. APP LOGIC ---
   const countEl = document.getElementById('libCount');
-  const BOOKMARK_KEY = 'auroraReaderBookmarks_v1';
+  const BOOKMARK_KEY = 'ActsOfMercyReaderBookmarks_v1';
   let map = null;
 
   // Global Error Handler to catch hidden crashes
@@ -171,7 +171,7 @@ h1{font-size:16px;margin:0}
     const markers = [];
 
     // Icon Style
-    const auroraIcon = L.divIcon({
+    const AOMIcon = L.divIcon({
       className: 'book-marker',
       iconSize: [12, 12],
       iconAnchor: [6, 6],
@@ -184,7 +184,7 @@ h1{font-size:16px;margin:0}
       if(book.lat === undefined || book.lng === undefined) return;
 
       const resumeLabel = labelFor(marks[book.file] || marks[book.name]);
-      const marker = L.marker([book.lat, book.lng], { icon: auroraIcon }).addTo(map);
+      const marker = L.marker([book.lat, book.lng], { icon: AOMIcon }).addTo(map);
       marker.bindPopup(createPopupContent(book, resumeLabel));
       markers.push(marker);
     });
